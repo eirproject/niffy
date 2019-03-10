@@ -1,0 +1,19 @@
+[package]
+name = "niffy_compilernif"
+version = "0.1.0"
+authors = []
+edition = "2018"
+
+[lib]
+name = "niffy_compilernif"
+path = "src/lib.rs"
+crate-type = ["dylib"]
+
+[dependencies]
+rustler = "0.20.0"
+rustler_codegen = "0.20.0"
+lazy_static = "1.0"
+
+core_erlang_compiler = { path = "../../../../rust/core_erlang_3/compiler/" }
+eir = { path = "../../../../rust/core_erlang_3/eir/" }
+gen_nif = { path = "../../../../rust/core_erlang_3/gen_nif/" }

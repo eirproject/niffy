@@ -105,8 +105,10 @@ defmodule Niffy do
     end
   end
 
-  def do_compile_nif(mod, env) do
+  def do_compile_nif(mod, env, to_compile) do
     ctx = Niffy.CompilerNif.ctx_new()
+
+    IO.puts "Compiling #{inspect to_compile} in #{mod}"
 
     # Add the root module
     {:ok, core_code} = get_core(mod)
@@ -115,9 +117,9 @@ defmodule Niffy do
 
     # Add dependencies
     # TODO
-    Niffy.CompilerNif.ctx_query_required_modules(ctx, [{NiffyTest.NifTest, :woohoo, 1}])
+    Niffy.CompilerNif.ctx_query_required_modules(ctx, to_compile)
 
-    Niffy.CompilerNif.ctx_compile_module_nifs(ctx, [{NiffyTest.NifTest, :woohoo, 1}])
+    Niffy.CompilerNif.ctx_compile_module_nifs(ctx, to_compile)
 
     {_, 0} = System.cmd("clang-7", ["-I", nif_include_dir(), "-O0", "-S", "-emit-llvm", "nif_lib.c"])
     {_, 0} = System.cmd("llc-7", ["-relocation-model=pic", "-filetype=obj", "nif_lib.ll"])
@@ -128,7 +130,7 @@ defmodule Niffy do
     :ok
   end
 
-  def __after_compile__(env, bytecode) do
+  def cache_bytecode(env, bytecode) do
     {:ok, core_iolist} = beam_to_core(bytecode)
     core_code = :erlang.iolist_to_binary(core_iolist)
     file_path = niffy_core_cache_file(env.module)
@@ -137,15 +139,31 @@ defmodule Niffy do
     :ok
   end
 
-  defmacro __using__(_opts) do
-    quote do
-      @after_compile Niffy
-      @on_load :on_module_load
+  def on_definition(env, kind, name, args, guards, body) do
+    res = Module.get_attribute(env.module, :niffy)
+    if res do
+      Module.put_attribute(env.module, :niffy_accumulated_nifs, {env.module, name, length(args)})
+    end
+    Module.put_attribute(env.module, :niffy, nil)
+  end
 
+  defmacro before_compile(env) do
+    quote do
       def on_module_load do
-        Niffy.do_compile_nif(__MODULE__, __ENV__)
+        Niffy.do_compile_nif(__MODULE__, __ENV__, @niffy_accumulated_nifs)
         :erlang.load_nif("/home/hansihe/proj/elixir/niffy/output", 0)
       end
+    end
+  end
+
+  defmacro __using__(_opts) do
+    quote do
+      Module.register_attribute(__MODULE__, :niffy, [])
+      Module.register_attribute(__MODULE__, :niffy_accumulated_nifs, accumulate: true, persist: true)
+      @before_compile {Niffy, :before_compile}
+      @on_definition {Niffy, :on_definition}
+      @after_compile {Niffy, :cache_bytecode}
+      @on_load :on_module_load
     end
   end
 
@@ -155,6 +173,7 @@ defmodule Niffy do
     alt_sig = {alt_fun_name, meta, args}
 
     quote do
+      @niffy true
       def(unquote(sig), unquote(body))
       def(unquote(alt_sig), unquote(body))
     end

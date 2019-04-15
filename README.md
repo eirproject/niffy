@@ -10,10 +10,10 @@ This is mostly a proof of concept at the moment, it doesn't do anything useful
 yet. Mostly used to ease correctness testing of Eir at the moment, but the 
 following things are on the short term roadmap:
 
-[x] Basic NIF generation
-[ ] Support more of Eir in LLVM code generation
-[ ] Type specialization
-[ ] SIMD intrinsics
+- [x] Basic NIF generation
+- [ ] Support more of Eir in LLVM code generation
+- [ ] Type specialization
+- [ ] SIMD intrinsics
 
 ## Example
 

@@ -17,3 +17,4 @@ lazy_static = "1.0"
 core_erlang_compiler = { path = "../../../../rust/core_erlang_3/compiler/" }
 eir = { path = "../../../../rust/core_erlang_3/eir/" }
 gen_nif = { path = "../../../../rust/core_erlang_3/gen_nif/" }
+cps_transform = { path = "../../../../rust/core_erlang_3/cps_transform/" }

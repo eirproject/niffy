@@ -107,25 +107,39 @@ defmodule Niffy do
 
   def do_compile_nif(mod, env, to_compile) do
     ctx = Niffy.CompilerNif.ctx_new()
+    Niffy.CompilerNif.ctx_add_builtins(ctx, [
+      {:erlang, :'+', 2},
+    ])
 
     IO.puts "Compiling #{inspect to_compile} in #{mod}"
 
     # Add the root module
     {:ok, core_code} = get_core(mod)
-    {:ok, mod_bin} = Niffy.CompilerNif.ctx_add_module(ctx, core_code)
+    {:ok, mod_bin} = Niffy.CompilerNif.ctx_add_module(ctx, :erlang.iolist_to_binary(core_code))
     ^mod_bin = Atom.to_string(mod)
 
     # Add dependencies
     # TODO
-    Niffy.CompilerNif.ctx_query_required_modules(ctx, to_compile)
+    Niffy.CompilerNif.ctx_add_root_functions(ctx, to_compile)
+
+    {:ok, missing} = Niffy.CompilerNif.ctx_query_required_modules(ctx)
+    for module <- missing do
+      IO.inspect {"MISSING", module}
+      {:ok, core} = get_core(String.to_atom(module))
+      file_path = niffy_core_cache_file(String.to_atom(module))
+      File.write!(file_path, core)
+      Niffy.CompilerNif.ctx_add_module(ctx, :erlang.iolist_to_binary(core))
+    end
 
     Niffy.CompilerNif.ctx_compile_module_nifs(ctx, to_compile)
 
-    {_, 0} = System.cmd("clang-7", ["-I", nif_include_dir(), "-O0", "-S", "-emit-llvm", "nif_lib.c"])
-    {_, 0} = System.cmd("llc-7", ["-relocation-model=pic", "-filetype=obj", "nif_lib.ll"])
-    {_, 0} = System.cmd("llvm-dis-7", ["module.bc"])
-    {_, 0} = System.cmd("llc-7", ["-relocation-model=pic", "-filetype=obj", "module.bc"])
-    {_, 0} = System.cmd("clang-7", ["-fPIC", "-shared", "-o", "output.so", "nif_lib.o", "module.o"])
+    IO.inspect ["clang-7", ["-I", nif_include_dir(), "-O0", "-S", "-emit-llvm", "nif_lib.c"]]
+
+    {_, 0} = IO.inspect System.cmd("clang-7", ["-I", nif_include_dir(), "-fPIC", "-O0", "-S", "-emit-llvm", "nif_lib.c"])
+    {_, 0} = IO.inspect System.cmd("llc-7", ["-relocation-model=pic", "-filetype=obj", "nif_lib.ll"])
+    {_, 0} = IO.inspect System.cmd("llvm-dis-7", ["module.bc"])
+    {_, 0} = IO.inspect System.cmd("llc-7", ["-relocation-model=pic", "-filetype=obj", "module.bc"])
+    {_, 0} = IO.inspect System.cmd("clang-7", ["-fPIC", "-shared", "-o", "output.so", "nif_lib.o", "module.o"])
 
     :ok
   end

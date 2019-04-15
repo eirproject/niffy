@@ -40,4 +40,11 @@ defmodule NiffyTest do
     compare_native(NiffyTest.NifTest.woohoo(:doo))
     compare_native(NiffyTest.NifTest.woohoo(:foo))
   end
+
+  test "closures" do
+    IO.inspect NiffyTest.NifTest.test_closure(1)
+    IO.inspect NiffyTest.NifTest.test_closure_orig(1)
+    :a = :b
+  end
+
 end

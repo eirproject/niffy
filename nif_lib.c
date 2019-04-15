@@ -18,29 +18,6 @@ int nifrt_callarg_wrappers_num;
 void (**nifrt_callarg_wrappers)(void*, ErlNifEnv*, ERL_NIF_TERM*);
 void (*nifrt_callarg_wrappers_arr[10])(void*, ErlNifEnv*, ERL_NIF_TERM*);
 
-// ==================
-// ==== Closures ====
-// ==================
-
-//typedef struct {
-//    char *module;
-//    char *name;
-//    int env_num;
-//    ErlNifEnv *env;
-//    int captures_len;
-//    ERL_NIF_TERM captures[];
-//} lambda_environment_t;
-//
-//typedef struct {
-//    lambda_environment_t *environment;
-//    int lambda_num;
-//    void *fun;
-//} bound_lambda_t;
-//
-//ERL_NIF_TERM atom_error;
-//
-//ErlNifResourceType *lambda_environment_resource_type;
-//ErlNifResourceType *bound_lambda_resource_type;
 ErlNifResourceType *fun_ptr_resource_type;
 ERL_NIF_TERM native_fun_atom;
 ERL_NIF_TERM nil_atom;
@@ -48,16 +25,7 @@ ERL_NIF_TERM nil_atom;
 void free_fun_ptr(ErlNifEnv *env, void *obj) {
 }
 
-//
-//// Called at load. Opens the lambda resource type.
 int on_load(ErlNifEnv *env) {
-//    atom_error = enif_make_atom(env, "error");
-//    lambda_environment_resource_type = 
-//        enif_open_resource_type(env, NULL, "eir_lambda_environment", 
-//                free_lambda_environment, ERL_NIF_RT_CREATE, NULL);
-//    bound_lambda_resource_type = 
-//        enif_open_resource_type(env, NULL, "eir_bound_lambda", 
-//                free_bound_lambda, ERL_NIF_RT_CREATE, NULL);
     fun_ptr_resource_type =
         enif_open_resource_type(env, NULL, "niffy_fun_ptr",
                 free_fun_ptr, ERL_NIF_RT_CREATE, NULL);
@@ -109,18 +77,13 @@ static ERL_NIF_TERM nifrt_make_fun_empty_env(ErlNifEnv *env, void *fun, int arit
 }
 
 static void nifrt_inner_launchpad(ErlNifEnv *env, ERL_NIF_TERM *argv, int argc, void *nif_fun) {
-    printf("Enter inner\n");
     // Store stack state
     if (!setjmp(ret_buf)) {
-        printf("Callarg: %ld\n", (nifrt_callarg_wrappers + argc));
-        // Call the appropriate callarg function, enter the actual NIF code
-        //((*nifrt_callarg_wrappers) + argc)(nif_fun, env, argv);
         (nifrt_callarg_wrappers_arr[argc])(nif_fun, env, argv);
     }
 }
 
 ERL_NIF_TERM nifrt_launchpad(ErlNifEnv *env, ERL_NIF_TERM *argv, int argc, void *nif_fun) {
-    printf("Enter launchpad\n");
 
     // If the stack hasn't been allocated for this thread, do that.
     if (!stack_inited) {
@@ -132,7 +95,7 @@ ERL_NIF_TERM nifrt_launchpad(ErlNifEnv *env, ERL_NIF_TERM *argv, int argc, void 
     ret_term = 0;
 
     // Construct args to native NIF function
-    // (ok_cont, err_cont, args..)
+    // (env, ok_cont, err_cont, args..)
     ERL_NIF_TERM argsi[argc+3];
     argsi[0] = nil_atom;
     argsi[1] = nifrt_make_fun_empty_env(env, nifrt_ret_ok_cont, 2);
@@ -141,9 +104,9 @@ ERL_NIF_TERM nifrt_launchpad(ErlNifEnv *env, ERL_NIF_TERM *argv, int argc, void 
         argsi[i+3] = argv[i];
     }
 
-    for (int i = 0; i < argc+3; i++) {
-        enif_fprintf(stdout, "arg: %T\n", argsi[i]);
-    }
+    //for (int i = 0; i < argc+3; i++) {
+    //    enif_fprintf(stdout, "arg: %T\n", argsi[i]);
+    //}
 
     // Set up contexts
     ucontext_t ret_ctx;
@@ -188,86 +151,6 @@ void nifrt_cont_call(ErlNifEnv *env, ERL_NIF_TERM cont, ERL_NIF_TERM ret) {
     printf("Cont call fail!\n");
     exit(-1);
 }
-//
-//// Constructs a new lambda environment. Argument 1-3 
-//// (module, name, env_num) are used for debugging only,
-//// and must be statically allocated.
-//ERL_NIF_TERM make_lambda_environment(ErlNifEnv *env, char *module, 
-//        char *name, uint64_t env_num,
-//        uint64_t captures_len, ERL_NIF_TERM *captures) {
-//
-//    void *obj = enif_alloc_resource(lambda_environment_resource_type,
-//            sizeof(lambda_environment_t) + (captures_len * sizeof(ERL_NIF_TERM)));
-//    lambda_environment_t *lambda = (lambda_environment_t *) obj;
-//
-//    ErlNifEnv *env = enif_alloc_env();
-//
-//    lambda->module = module;
-//    lambda->name = name;
-//    lambda->env_num = env_num;
-//    lambda->captures_len = captures_len;
-//
-//    for (int i = 0; i < captures_len; i++) {
-//        container->captures[i] = enif_make_copy(env, captures[i]);
-//    }
-//
-//    ERL_NIF_TERM ret = enif_make_resource(env, obj);
-//    enif_release_resource(obj);
-//    return ret;
-//}
-//
-//// Binds a function with an environment resource.
-//// The second argument is for debugging only.
-//ERL_NIF_TERM make_bound_lambda(ErlNifEnv *env, uint64_t lambda_num, 
-//        void *fun, ERL_NIF_TERM environment_term) {
-//    int res;
-//
-//    void *environment_void;
-//    res = enif_get_resource(env, environment_term, 
-//            lambda_environment_resource_type, &environment_void);
-//    if (!res) {
-//        printf("Attempted to construct bound lambda with invalid environment\n");
-//        *ret = atom_error;
-//        return false;
-//    }
-//    enif_keep_resource(environment_void);
-//    lambda_environment_t *environment = (lambda_environment_t *) environment_void;
-//
-//    void *obj = enif_alloc_resource(bound_lambda_resource_type, sizeof(bound_lambda_t));
-//    lambda_env_t *bound = (lambda_env_t *) obj;
-//
-//    container->environment = environment;
-//    container->lambda_num = lambda_num;
-//    container->fun = fun;
-//
-//    ERL_NIF_TERM ret = enif_make_resource(env, obj);
-//    enif_release_resource(obj);
-//    return ret;
-//}
-//
-//int call_apply(ERL_NIF_TERM *ret, ErlNifEnv *env, ERL_NIF_TERM function, ERL_NIF_TERM *args) {
-//    void *resource_raw;
-//    if (enif_get_resource(env, function, bound_lambda_resource_type, &resource)) {
-//        bound_lambda_t *resource = (bound_lambda_t *) resource_raw;
-//    }
-//    
-//    return 0;
-//}
-//
-//// Frees a lambda environment. Called as a resource destructor.
-//void free_lambda_environment(ErlNifEnv *env, void *obj) {
-//    lambda_environment_t *obj_n = (lambda_environment_t *) obj; 
-//
-//    enif_free_env(obj_n->env);
-//
-//}
-//
-//void free_bound_lambda(ErlNifEnv *env, void *obj) {
-//    bound_lambda_t *obj_n = (bound_lambda_t *) obj; 
-//
-//    enif_release_resource(obj_n->environment);
-//
-//}
 
 // ==================================
 // ==== Function implementations ====
@@ -284,12 +167,6 @@ void nifrt_cont_call(ErlNifEnv *env, ERL_NIF_TERM cont, ERL_NIF_TERM ret) {
 void GNIF6_erlang2__p2_n_n(ErlNifEnv* env, ERL_NIF_TERM c_env, 
         ERL_NIF_TERM ok_cont, ERL_NIF_TERM err_cont,
         ERL_NIF_TERM term1, ERL_NIF_TERM term2) {
-    enif_fprintf(stdout, "WOO\n");
-    enif_fprintf(stdout, "c_env: %T\n", c_env);
-    enif_fprintf(stdout, "ok_cont: %T\n", ok_cont);
-    enif_fprintf(stdout, "err_cont: %T\n", err_cont);
-    enif_fprintf(stdout, "term1: %T\n", term1);
-    enif_fprintf(stdout, "term2: %T\n", term2);
     int i1, i2;
     ERL_NIF_TERM ret;
     if (!enif_get_int(env, term1, &i1)) {

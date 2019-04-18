@@ -109,6 +109,10 @@ defmodule Niffy do
     ctx = Niffy.CompilerNif.ctx_new()
     Niffy.CompilerNif.ctx_add_builtins(ctx, [
       {:erlang, :'+', 2},
+      {:erlang, :'-', 2},
+      {:erlang, :'>', 2},
+      {:erlang, :nif_error, 1},
+      {:erlang, :is_map, 1},
     ])
 
     IO.puts "Compiling #{inspect to_compile} in #{mod}"
@@ -131,7 +135,11 @@ defmodule Niffy do
       Niffy.CompilerNif.ctx_add_module(ctx, :erlang.iolist_to_binary(core))
     end
 
-    Niffy.CompilerNif.ctx_compile_module_nifs(ctx, to_compile)
+    try do
+      Niffy.CompilerNif.ctx_compile_module_nifs(ctx, to_compile)
+    rescue
+      _ -> :init.stop(-1)
+    end
 
     IO.inspect ["clang-7", ["-I", nif_include_dir(), "-O0", "-S", "-emit-llvm", "nif_lib.c"]]
 

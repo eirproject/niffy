@@ -19,8 +19,13 @@ void (**nifrt_callarg_wrappers)(void*, ErlNifEnv*, ERL_NIF_TERM*);
 void (*nifrt_callarg_wrappers_arr[10])(void*, ErlNifEnv*, ERL_NIF_TERM*);
 
 ErlNifResourceType *fun_ptr_resource_type;
-ERL_NIF_TERM native_fun_atom;
-ERL_NIF_TERM nil_atom;
+ERL_NIF_TERM nifrt_native_fun_atom;
+ERL_NIF_TERM nifrt_nil_atom;
+ERL_NIF_TERM nifrt_false_atom;
+ERL_NIF_TERM nifrt_true_atom;
+ERL_NIF_TERM nifrt_internal_err_data_atom;
+ERL_NIF_TERM nifrt_badarith_atom;
+ERL_NIF_TERM nifrt_error_atom;
 
 void free_fun_ptr(ErlNifEnv *env, void *obj) {
 }
@@ -29,8 +34,13 @@ int on_load(ErlNifEnv *env) {
     fun_ptr_resource_type =
         enif_open_resource_type(env, NULL, "niffy_fun_ptr",
                 free_fun_ptr, ERL_NIF_RT_CREATE, NULL);
-    native_fun_atom = enif_make_atom(env, "native_fun");
-    nil_atom = enif_make_atom(env, "nil");
+    nifrt_native_fun_atom = enif_make_atom(env, "native_fun");
+    nifrt_nil_atom = enif_make_atom(env, "nil");
+    nifrt_false_atom = enif_make_atom(env, "false");
+    nifrt_true_atom = enif_make_atom(env, "true");
+    nifrt_internal_err_data_atom = enif_make_atom(env, "internal_err_data");
+    nifrt_badarith_atom = enif_make_atom(env, "badarith");
+    nifrt_error_atom = enif_make_atom(env, "error");
     return 0;
 }
 
@@ -70,9 +80,9 @@ static void nifrt_ret_err_cont(ErlNifEnv *env, ERL_NIF_TERM _closure_env, ERL_NI
 static ERL_NIF_TERM nifrt_make_fun_empty_env(ErlNifEnv *env, void *fun, int arity) {
     return enif_make_tuple3(
             env,
-            native_fun_atom,
+            nifrt_native_fun_atom,
             nifrt_make_fun_ptr(env, fun, arity),
-            nil_atom
+            nifrt_nil_atom
             );
 }
 
@@ -97,7 +107,7 @@ ERL_NIF_TERM nifrt_launchpad(ErlNifEnv *env, ERL_NIF_TERM *argv, int argc, void 
     // Construct args to native NIF function
     // (env, ok_cont, err_cont, args..)
     ERL_NIF_TERM argsi[argc+3];
-    argsi[0] = nil_atom;
+    argsi[0] = nifrt_nil_atom;
     argsi[1] = nifrt_make_fun_empty_env(env, nifrt_ret_ok_cont, 2);
     argsi[2] = nifrt_make_fun_empty_env(env, nifrt_ret_err_cont, 2);
     for (int i = 0; i < argc; i++) {
@@ -135,7 +145,7 @@ void nifrt_cont_call(ErlNifEnv *env, ERL_NIF_TERM cont, ERL_NIF_TERM ret) {
     void *fun_void;
 
     if (enif_get_tuple(env, cont, &arity, &terms)) {
-        if (arity == 3 && terms[0] == native_fun_atom) {
+        if (arity == 3 && terms[0] == nifrt_native_fun_atom) {
             res = enif_get_resource(env, terms[1], 
                     fun_ptr_resource_type, &fun_void);
             if (res) {
@@ -149,6 +159,33 @@ void nifrt_cont_call(ErlNifEnv *env, ERL_NIF_TERM cont, ERL_NIF_TERM ret) {
     }
 
     printf("Cont call fail!\n");
+    exit(-1);
+}
+
+void (*nifrt_unpack_fun_ptr(ErlNifEnv *env, int i_arity, ERL_NIF_TERM fun))() {
+    int arity;
+    const ERL_NIF_TERM *terms;
+    int res;
+    void *fun_void;
+
+    enif_fprintf(stdout, "%T\n", fun);
+
+    if (enif_get_tuple(env, fun, &arity, &terms)) {
+        if (arity == 3 && terms[0] == nifrt_native_fun_atom) {
+            res = enif_get_resource(env, terms[1], 
+                    fun_ptr_resource_type, &fun_void);
+            if (res) {
+                enif_keep_resource(fun_void);
+                fun_ptr_t *fun_ptr = (fun_ptr_t *) fun_void;
+                enif_fprintf(stdout, "%d %d\n", fun_ptr->arity, i_arity);
+                if (fun_ptr->arity == i_arity) {
+                    return fun_ptr->fun;
+                }
+            }
+        }
+    }
+
+    printf("Unpack fun ptr fail!\n");
     exit(-1);
 }
 
@@ -170,15 +207,85 @@ void GNIF6_erlang2__p2_n_n(ErlNifEnv* env, ERL_NIF_TERM c_env,
     int i1, i2;
     ERL_NIF_TERM ret;
     if (!enif_get_int(env, term1, &i1)) {
-        ret = enif_make_atom(env, "badarith");
+        ret = enif_make_tuple3(env, 
+                nifrt_error_atom, 
+                nifrt_badarith_atom, 
+                nifrt_internal_err_data_atom
+                );
         nifrt_cont_call(env, err_cont, ret);
     }
     if (!enif_get_int(env, term2, &i2)) {
-        ret = enif_make_atom(env, "badarith");
+        ret = enif_make_tuple3(env, 
+                nifrt_error_atom, 
+                nifrt_badarith_atom, 
+                nifrt_internal_err_data_atom
+                );
         nifrt_cont_call(env, err_cont, ret);
     }
     ret = enif_make_int(env, i1 + i2);
     nifrt_cont_call(env, ok_cont, ret);
+}
+
+// erlang:'-'/2
+void GNIF6_erlang2__m2_n_n(ErlNifEnv* env, ERL_NIF_TERM c_env, 
+        ERL_NIF_TERM ok_cont, ERL_NIF_TERM err_cont,
+        ERL_NIF_TERM term1, ERL_NIF_TERM term2) {
+    int i1, i2;
+    ERL_NIF_TERM ret;
+    if (!enif_get_int(env, term1, &i1)) {
+        ret = enif_make_tuple3(env, 
+                nifrt_error_atom, 
+                nifrt_badarith_atom, 
+                nifrt_internal_err_data_atom
+                );
+        nifrt_cont_call(env, err_cont, ret);
+    }
+    if (!enif_get_int(env, term2, &i2)) {
+        ret = enif_make_tuple3(env, 
+                nifrt_error_atom, 
+                nifrt_badarith_atom, 
+                nifrt_internal_err_data_atom
+                );
+        nifrt_cont_call(env, err_cont, ret);
+    }
+    ret = enif_make_int(env, i1 - i2);
+    nifrt_cont_call(env, ok_cont, ret);
+}
+
+// erlang:nif_error/1
+void GNIF6_erlang10_nif__error1_n_n(ErlNifEnv *env, ERL_NIF_TERM c_env,
+        ERL_NIF_TERM ok_cont, ERL_NIF_TERM err_cont,
+        ERL_NIF_TERM arg) {
+    ERL_NIF_TERM ret;
+        ret = enif_make_tuple3(env, 
+                nifrt_error_atom, 
+                arg, 
+                nifrt_internal_err_data_atom
+                );
+    nifrt_cont_call(env, err_cont, ret);
+}
+
+// erlang:is_map/1
+void GNIF6_erlang7_is__map1_n_n(ErlNifEnv *env, ERL_NIF_TERM c_env,
+        ERL_NIF_TERM ok_cont, ERL_NIF_TERM err_cont,
+        ERL_NIF_TERM arg) {
+    //enif_fprintf(stdout, "%T\n", arg);
+    if (enif_is_map(env, arg)) {
+        nifrt_cont_call(env, ok_cont, nifrt_true_atom);
+    } else {
+        nifrt_cont_call(env, ok_cont, nifrt_false_atom);
+    }
+}
+
+// erlang:'>'/2
+void GNIF6_erlang2__g2_n_n(ErlNifEnv* env, ERL_NIF_TERM c_env, 
+        ERL_NIF_TERM ok_cont, ERL_NIF_TERM err_cont,
+        ERL_NIF_TERM term1, ERL_NIF_TERM term2) {
+    if (enif_compare(term1, term2) > 0) {
+        nifrt_cont_call(env, ok_cont, nifrt_true_atom);
+    } else {
+        nifrt_cont_call(env, ok_cont, nifrt_false_atom);
+    }
 }
 
 // erlang:element/2
